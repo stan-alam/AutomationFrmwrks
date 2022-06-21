@@ -8,7 +8,7 @@ public class BaseFramework {
     BaseClass.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
     BaseClass.getDriverThread().manage().timeouts().implicitlyWait(DELAY, TimeUnit.SECONDS);
     BaseClass.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
-    navigateWebBrowser().to(baseURL); //todo define baseURL in json file
+    navigateBrowser().to(baseURL); //todo define baseURL in json file
   }
   @AfterClass
   public static void stop() {
