@@ -5,9 +5,9 @@ public class BaseFramework {
   public static void start() {
     final WebDriver driver = new ChromeDriver();
     BaseFramework.setDriverThread(driver);
-    BaseClass.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
-    BaseClass.getDriverThread().manage().timeouts().implicitlyWait(DELAY, TimeUnit.SECONDS);
-    BaseClass.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
+    BaseFramework.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
+    BaseFramework.getDriverThread().manage().timeouts().implicitlyWait(DELAY, TimeUnit.SECONDS);
+    BaseFramework.getDriverThread().manage().timeouts().pageLoadTimeout(DELAY, TimeUnit.SECONDS);
     navigateBrowser().to(baseURL); //todo define baseURL in json file
   }
   @AfterClass
