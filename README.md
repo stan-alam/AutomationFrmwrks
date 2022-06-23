@@ -3,17 +3,17 @@ Automation (polyglot)Framework Projects
 
 Project objectives -> create an automation framework (from scratch) for the following languages
 
-** C#
+* C#
 
-** Go
+* Go
 
-** Node
+* Node
 
-** Python
+* Python
 
-** Java
+* Java
 
-** JS -> React, TestCafe
+* JS -> React, TestCafe
 
 ## Major pitfalls to avoid
 
