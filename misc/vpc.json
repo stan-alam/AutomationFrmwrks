@@ -1,0 +1,1577 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "A VPC stack that includes public and private subnets with a Consul cluster for service discovery",
+  "Mappings": {
+    "AWSNATAMI": {
+      "us-east-1": {
+        "AMI": "ami-4c9e4b24"
+      },
+      "us-west-2": {
+        "AMI": "ami-bb69128b"
+      }
+    },
+    "BASTIONAMI": {
+      "us-east-1": {
+        "AMI": "ami-824b63ea"
+      },
+      "us-west-2": {
+        "AMI": "ami-03ffd033"
+      }
+    },
+    "DOCKERAMI": {
+      "us-east-1": {
+        "AMI": "ami-37eb025c"
+      },
+      "us-west-2": {
+        "AMI": "ami-67fcc557"
+      }
+    }
+  },
+  "Outputs": {
+    "BastionIPAddress": {
+      "Description": "IP address of the bastion host",
+      "Value": {"Fn::GetAtt": ["BastionHost", "PublicIp"]}
+    },
+    "VPCId": {
+      "Description": "Id of the VPC",
+      "Value": {"Ref": "VPC"}
+    },
+    "ConsulHost1ENI": {
+      "Description": "ID of the ENI for Consul Host 1",
+      "Value": {"Ref": "ConsulHost1Xface"}
+    },
+    "ConsulHost2ENI": {
+      "Description": "ID of the ENI for Consul Host 2",
+      "Value": {"Ref": "ConsulHost2Xface"}
+    },
+    "ConsulHost3ENI": {
+      "Description": "ID of the ENI for Consul Host 3",
+      "Value": {"Ref": "ConsulHost3Xface"}
+    }
+  },
+  "Parameters": {
+    "VPCName": {
+      "Type": "String",
+      "MinLength": "1"
+    },
+    "SSLCertName": {
+      "Type": "String",
+      "Description": "SSL Cert to use for public load balancers",
+      "Default": "stan2020"
+    },
+    "AvailabilityZones": {
+      "Type": "CommaDelimitedList",
+      "Description": "A list of three availability zone letters to distribute the subnets across.",
+      "Default": "c,d,e"
+    },
+    "BastionInstanceType": {
+      "Type": "String",
+      "Description": "Bastion EC2 instance type",
+      "AllowedValues": [
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "m1.small",
+        "m1.medium",
+        "m1.large",
+        "m1.xlarge",
+        "m2.xlarge",
+        "m2.2xlarge",
+        "m2.4xlarge",
+        "m3.medium",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c1.medium",
+        "c1.xlarge",
+        "cc1.4xlarge",
+        "cc2.8xlarge"
+      ],
+      "ConstraintDescription": "must be a valid EC2 instance type.",
+      "Default": "m3.medium"
+    },
+    "ServiceInstanceType": {
+      "Type": "String",
+      "Description": "Consul EC2 instance type",
+      "AllowedValues": [
+        "t1.micro",
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "m1.small",
+        "m1.medium",
+        "m1.large",
+        "m1.xlarge",
+        "m2.xlarge",
+        "m2.2xlarge",
+        "m2.4xlarge",
+        "m3.medium",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c1.medium",
+        "c1.xlarge",
+        "cc1.4xlarge",
+        "cc2.8xlarge"
+      ],
+      "ConstraintDescription": "must be a valid EC2 instance type.",
+      "Default": "m3.medium"
+    },
+      "ConsulInstanceType": {
+      "AllowedValues": [
+        "t1.micro",
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "m1.small",
+        "m1.medium",
+        "m1.large",
+        "m1.xlarge",
+        "m2.xlarge",
+        "m2.2xlarge",
+        "m2.4xlarge",
+        "m3.medium",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c1.medium",
+        "c1.xlarge",
+        "cc1.4xlarge",
+        "cc2.8xlarge"
+      ],
+      "ConstraintDescription": "must be a valid EC2 instance type.",
+      "Default": "m3.xlarge",
+      "Description": "Consul EC2 instance type",
+      "Type": "String"
+    },
+    "KeyName": {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description": "Name of an existing EC2 KeyPair to enable SSH access"
+    },
+    "NATInstanceType": {
+      "Type": "String",
+      "Description": "NAT Device EC2 instance type",
+      "AllowedValues": [
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "m1.small",
+        "m1.medium",
+        "m1.large",
+        "m1.xlarge",
+        "m2.xlarge",
+        "m2.2xlarge",
+        "m2.4xlarge",
+        "m3.medium",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c1.medium",
+        "c1.xlarge",
+        "cc1.4xlarge",
+        "cc2.8xlarge"
+      ],
+      "ConstraintDescription": "must be a valid EC2 instance type.",
+      "Default": "m3.xlarge"
+    },
+    "IdentificationBucket": {
+        "Type": "String",
+        "Description": "stanthrax integration stan- infrastructure team keys bucket path",
+        "Default": "eih-credentials"
+    },
+    "DockerImageBucket": {
+      "Type": "String",
+      "Description": "Docker image bucket name.",
+      "Default": "docker-images-stanthrax"
+    },
+    "DeployableArtifactBucket": {
+      "Type": "String",
+      "Description": "Deployment artifact bucket name.",
+      "Default": "deployable-artifacts-5d2c2f46-5b23-4b51-a000-177e52554aa7"
+    },
+    "DBQueueInstanceType": {
+      "Type": "String",
+      "Description": "Consul EC2 instance type",
+      "AllowedValues": [
+          "db.t1.micro",
+          "db.m1.small ",
+          "db.m1.medium",
+          "db.m1.large",
+          "db.m1.xlarge",
+          "db.m2.xlarge",
+          "db.m2.2xlarge",
+          "db.m2.4xlarge",
+          "db.m3.medium",
+          "db.m3.large",
+          "db.m3.xlarge",
+          "db.m3.2xlarge",
+          "db.r3.large",
+          "db.r3.xlarge",
+          "db.r3.2xlarge",
+          "db.r3.4xlarge",
+          "db.r3.8xlarge",
+          "db.t2.micro",
+          "db.t2.small",
+          "db.t2.medium"
+      ],
+      "ConstraintDescription": "must be a valid DB instance type.",
+      "Default": "db.r3.2xlarge"
+    },
+    "DBQueueUser": {
+      "Type": "String",
+      "Description": "Username for postgres queue database.",
+      "MinLength": "1",
+      "Default": "postgres"
+    },
+    "DBQueuePassword": {
+      "Type": "String",
+      "Description": "Password for postgres queue database.",
+      "MinLength": "1",
+      "Default": "u_pick_it",
+      "NoEcho": true
+    },
+    "DBQueueName": {
+      "Type":"String",
+      "Description": "Database Name for postgres.",
+      "MinLength": "1",
+      "Default": "queue"
+    },
+    "DBQueueAllocatedStorage": {
+      "Type": "String",
+      "Description": "Storage space for postgres database.",
+      "Default": "400"
+    },
+    "DBAdminInstanceType": {
+      "Type": "String",
+      "Description": "Consul EC2 instance type",
+      "AllowedValues": [
+          "db.t1.micro",
+          "db.m1.small ",
+          "db.m1.medium",
+          "db.m1.large",
+          "db.m1.xlarge",
+          "db.m2.xlarge",
+          "db.m2.2xlarge",
+          "db.m2.4xlarge",
+          "db.m3.medium",
+          "db.m3.large",
+          "db.m3.xlarge",
+          "db.m3.2xlarge",
+          "db.r3.large",
+          "db.r3.xlarge",
+          "db.r3.2xlarge",
+          "db.r3.4xlarge",
+          "db.r3.8xlarge",
+          "db.t2.micro",
+          "db.t2.small",
+          "db.t2.medium"
+      ],
+      "ConstraintDescription": "must be a valid DB instance type.",
+      "Default": "db.r3.2xlarge"
+    },
+    "DBAdminUser": {
+      "Type": "String",
+      "Description": "Username for postgres queue database.",
+      "MinLength": "1",
+      "Default": "postgres"
+    },
+    "DBAdminPassword": {
+      "Type": "String",
+      "Description": "Password for postgres queue database.",
+      "MinLength": "1",
+      "Default": "u_pick_it",
+      "NoEcho": true
+    },
+    "DBAdminName": {
+      "Type":"String",
+      "Description": "Database Name for postgres.",
+      "MinLength": "1",
+      "Default": "stan-admin"
+    },
+    "DBAdminAllocatedStorage": {
+      "Type": "String",
+      "Description": "Storage space for postgres database.",
+      "Default": "400"
+    },
+    "EihEnv": {
+      "Type": "String",
+      "Description": "stanthrax environment to prefix routes with.",
+      "Default": "dev"
+    },
+    "HostedZoneId": {
+      "Type": "String",
+      "Description": "Route53 Hosted Zone Id for stanA2020 DNS.",
+      "Default": "Z2EXOIWRKGVV8"
+    },
+    "TemplatePath": {
+      "Type": "String",
+      "Description": "Path to nested stack template files with matching release version.",
+      "Default": "https://s3.amazonaws.com/cloudformation-templates-20052d08-ebcb-41ab-b8ad-d6b6d2fe33ea/dev/aws-cloudformation-stan-/0.16.0-SNAPSHOT.Sunday, December 04, 2022.11-34-16.077d62e/"
+    }
+  },
+  "Resources": {
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "Tags": [{"Key": "Name", "Value": {"Fn::Join": ["", [{"Ref": "VPCName"}, {"Ref": "AWS::Region"}]]}}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [{"Key": "Name", "Value": "InternetGateway"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "GatewayToInternet": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "InternetGatewayId": {"Ref": "InternetGateway"},
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "Tags": [{"Key": "Name", "Value": "PublicRouteTable"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "GatewayToInternet",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {"Ref": "InternetGateway"},
+        "RouteTableId": {"Ref": "PublicRouteTable"}
+      }
+    },
+    "PublicSubnet0": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [0, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.0.0/24",
+        "Tags": [{"Key": "Name","Value": "PublicSubnet0"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PublicSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [1, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.1.0/24",
+        "Tags": [{"Key": "Name", "Value": "PublicSubnet1"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PublicSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [2, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.2.0/24",
+        "Tags": [{"Key": "Name", "Value": "PublicSubnet2"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PublicSubnet0PublicRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PublicRouteTable"},
+        "SubnetId": {"Ref": "PublicSubnet0"}
+      }
+    },
+    "PublicSubnet1PublicRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PublicRouteTable"},
+        "SubnetId": {"Ref": "PublicSubnet1"}
+      }
+    },
+    "PublicSubnet2PublicRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PublicRouteTable"},
+        "SubnetId": {"Ref": "PublicSubnet2"}
+      }
+    },
+    "PrivateRouteTable1": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "Tags": [{"Key": "Name","Value": "PrivateRouteTable1"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateRouteTable2": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "Tags": [{"Key": "Name", "Value": "PrivateRouteTable2"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateRouteTable3": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "Tags": [{"Key": "Name", "Value": "PrivateRouteTable3"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "ZoneOneEIP": {
+       "Type": "AWS::EC2::EIP",
+       "DependsOn": "GatewayToInternet",
+       "Properties": {"Domain": "vpc"}
+    },
+    "ZoneTwoEIP": {
+       "Type": "AWS::EC2::EIP",
+       "DependsOn": "GatewayToInternet",
+       "Properties": {"Domain": "vpc"}
+    },
+    "ZoneThreeEIP": {
+       "Type": "AWS::EC2::EIP",
+       "DependsOn": "GatewayToInternet",
+       "Properties": {"Domain": "vpc"}
+    },
+    "PublicNetworkAcl": {
+      "Type": "AWS::EC2::NetworkAcl",
+      "Properties": {
+        "Tags": [{"Key": "Name","Value": "PublicNetworkAcl"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateNetworkAcl": {
+      "Type": "AWS::EC2::NetworkAcl",
+      "Properties": {
+        "Tags": [{"Key": "Name", "Value": "PrivateNetworkAcl"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "InboundSyslogPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 514, "To": 514},
+        "Protocol": 6,
+        "RuleAction": "allow",
+        "RuleNumber": 104
+      }
+    },
+    "InboundEphemeralPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 1024, "To": 65535},
+        "Protocol": 6,
+        "RuleAction": "allow",
+        "RuleNumber": 103
+      }
+    },
+    "InboundHTTPPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 80, "To": 80},
+        "Protocol": 6,
+        "RuleAction": "allow",
+        "RuleNumber": 100
+      }
+    },
+    "InboundHTTPSPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 443, "To": 443},
+        "Protocol": 6,
+        "RuleAction": "allow",
+        "RuleNumber": 101
+      }
+    },
+    "InboundPrivateNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PrivateNetworkAcl"},
+        "PortRange": {"From": 0, "To": 65535},
+        "Protocol": -1,
+        "RuleAction": "allow",
+        "RuleNumber": 100
+      }
+    },
+    "InboundSSHPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "false",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 22, "To": 22},
+        "Protocol": 6,
+        "RuleAction": "allow",
+        "RuleNumber": 102
+      }
+    },
+    "OutBoundPrivateNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "true",
+        "NetworkAclId": {"Ref": "PrivateNetworkAcl"},
+        "PortRange": {"From": 0, "To": 65535},
+        "Protocol": -1,
+        "RuleAction": "allow",
+        "RuleNumber": 100
+      }
+    },
+    "OutboundPublicNetworkAclEntry": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "true",
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "PortRange": {"From": 0, "To": 65535},
+        "Protocol": -1,
+        "RuleAction": "allow",
+        "RuleNumber": 100
+      }
+    },
+    "PrivateSubnet0": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [0, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.16.0/20",
+        "Tags": [{"Key": "Name", "Value": "PrivateSubnet0"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateSubnet0PrivateSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PrivateNetworkAcl"},
+        "SubnetId": {"Ref": "PrivateSubnet0"}
+      }
+    },
+    "PrivateSubnet0PrivateSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PrivateRouteTable1"},
+        "SubnetId": {"Ref": "PrivateSubnet0"}
+      }
+    },
+    "PrivateSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [1, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.32.0/20",
+        "Tags": [{"Key": "Name", "Value": "PrivateSubnet1"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateSubnet1PrivateSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PrivateNetworkAcl"},
+        "SubnetId": {"Ref": "PrivateSubnet1"}
+      }
+    },
+    "PrivateSubnet1PrivateSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PrivateRouteTable2"},
+        "SubnetId": {"Ref": "PrivateSubnet1"}
+      }
+    },
+    "PrivateSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [2, {"Ref": "AvailabilityZones"}]}]]},
+        "CidrBlock": "10.0.48.0/20",
+        "Tags": [{"Key": "Name", "Value": "PrivateSubnet2"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "PrivateSubnet2PrivateSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PrivateNetworkAcl"},
+        "SubnetId": {"Ref": "PrivateSubnet2"}
+      }
+    },
+    "PrivateSubnet2PrivateSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {"Ref": "PrivateRouteTable3"},
+        "SubnetId": {"Ref": "PrivateSubnet2"}
+      }
+    },
+    "PrivateRoute1": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NetworkInterfaceId": {"Ref": "ZoneOneNATENI"},
+        "RouteTableId": {"Ref": "PrivateRouteTable1"}
+      }
+    },
+    "PrivateRoute2": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NetworkInterfaceId": {"Ref": "ZoneTwoNATENI"},
+        "RouteTableId": {"Ref": "PrivateRouteTable2"}
+      }
+    },
+    "PrivateRoute3": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NetworkInterfaceId": {"Ref": "ZoneThreeNATENI"},
+        "RouteTableId": {"Ref": "PrivateRouteTable3"}
+      }
+    },
+    "PublicSubnet0PublicSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "SubnetId": {"Ref": "PublicSubnet0"}
+      }
+    },
+    "PublicSubnet1PublicSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "SubnetId": {"Ref": "PublicSubnet1"}
+      }
+    },
+    "PublicSubnet2PublicSubnetNetworkAclAssociation": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {"Ref": "PublicNetworkAcl"},
+        "SubnetId": {"Ref": "PublicSubnet2"}
+      }
+    },
+
+
+
+    "NATInstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "DefaultInstance",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["ec2:AttachNetworkInterface"],
+                  "Resource": ["*"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EC2NATInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{"Ref": "NATInstanceRole"}]
+      }
+    },
+    "NATSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enables internal access to the NAT device",
+        "SecurityGroupEgress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 443, "IpProtocol": "tcp", "ToPort": 443},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 514, "IpProtocol": "tcp", "ToPort": 514},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 6514, "IpProtocol": "tcp", "ToPort": 6514},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "tcp", "ToPort": 123},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "udp", "ToPort": 123},
+          {"CidrIp": "0.0.0.0/0", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "SecurityGroupIngress": [
+          {"CidrIp": "10.0.0.0/8", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 443, "IpProtocol": "tcp", "ToPort": 443},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 514, "IpProtocol": "tcp", "ToPort": 514},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 6514, "IpProtocol": "tcp", "ToPort": 6514},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.0.0/8", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "Tags": [{"Key": "Name", "Value": "NATSecurityGroup"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "ZoneOneNATENI": {
+      "Type" : "AWS::EC2::NetworkInterface",
+      "Properties" : {
+        "Description": "ENI for Zone One NAT device",
+        "GroupSet": [{"Ref": "NATSecurityGroup"}],
+        "PrivateIpAddress": "10.0.0.4",
+        "SourceDestCheck": false,
+        "SubnetId": {"Ref": "PublicSubnet0"},
+        "Tags": [{"Key": "Name", "Value": "Zone One NAT ENI"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "ZoneTwoNATENI": {
+      "Type" : "AWS::EC2::NetworkInterface",
+      "Properties" : {
+        "Description": "ENI for Zone Two NAT device",
+        "GroupSet": [{"Ref": "NATSecurityGroup"}],
+        "PrivateIpAddress": "10.0.1.4",
+        "SourceDestCheck": false,
+        "SubnetId": {"Ref": "PublicSubnet1"},
+        "Tags": [{"Key": "Name", "Value": "Zone Two NAT ENI"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "ZoneThreeNATENI": {
+      "Type" : "AWS::EC2::NetworkInterface",
+      "Properties" : {
+        "Description": "ENI for Zone Three NAT device",
+        "GroupSet": [{"Ref": "NATSecurityGroup"}],
+        "PrivateIpAddress": "10.0.2.4",
+        "SourceDestCheck": false,
+        "SubnetId": {"Ref": "PublicSubnet2"},
+        "Tags": [{"Key": "Name", "Value": "Zone Three NAT ENI"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "ZoneOneENIToEIPAssociation": {
+      "Type": "AWS::EC2::EIPAssociation",
+      "Properties": {
+        "AllocationId" : { "Fn::GetAtt" : [ "ZoneOneEIP", "AllocationId" ]},
+        "NetworkInterfaceId": {"Ref": "ZoneOneNATENI"}
+     }
+    },
+    "ZoneTwoENIToEIPAssociation": {
+      "Type": "AWS::EC2::EIPAssociation",
+      "Properties": {
+        "AllocationId" : { "Fn::GetAtt" : [ "ZoneTwoEIP", "AllocationId" ]},
+        "NetworkInterfaceId": {"Ref": "ZoneTwoNATENI"}
+     }
+    },
+    "ZoneThreeENIToEIPAssociation": {
+      "Type": "AWS::EC2::EIPAssociation",
+      "Properties": {
+        "AllocationId" : { "Fn::GetAtt" : [ "ZoneThreeEIP", "AllocationId" ]},
+        "NetworkInterfaceId": {"Ref": "ZoneThreeNATENI"}
+     }
+    },
+    "NATZoneOneLaunchConfiguration": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "AssociatePublicIpAddress" : true,
+        "ImageId": {"Fn::FindInMap": ["AWSNATAMI",{"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "NATInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "SecurityGroups": [{"Ref": "NATSecurityGroup"}],
+        "InstanceMonitoring": true,
+        "IamInstanceProfile": { "Ref": "EC2NATInstanceProfile" },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [ "\n", [
+              "#!/bin/bash -eux",
+              {"Fn::Join": ["", ["echo ", {"Ref": "ZoneOneNATENI"}, " > /var/tmp/eni-id.txt"]]},
+              "export my_instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+              "export my_availability_zone=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)",
+              "export my_zone_letter=$(echo -n $my_availability_zone | tail -c -1)",
+              "export my_eni_id=$(cat /var/tmp/eni-id.txt)",
+              {"Fn::Join": ["", ["export AWS_DEFAULT_REGION=", {"Ref": "AWS::Region"}]]},
+              "export retcode=1",
+              "while [ $retcode -ne 0 ]",
+              "do",
+              "    /usr/bin/aws ec2 attach-network-interface --network-interface-id ${my_eni_id} --instance-id ${my_instance_id} --device-index 1",
+              "    retcode=$?",
+              "done",
+              "[ \"$retcode\" -eq 0 ] && echo 'eni attachment successful' || echo 'eni attachment failed'",
+              "sleep 60",
+              "ifdown eth0",
+              "iptables -t nat -A POSTROUTING -j MASQUERADE",
+              "iptables -A FORWARD -j ACCEPT",
+              "echo 1 > /proc/sys/net/ipv4/ip_forward"
+            ]]
+          }
+        }
+      }
+    },
+    "NATZoneTwoLaunchConfiguration": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "AssociatePublicIpAddress" : true,
+        "ImageId": {"Fn::FindInMap": ["AWSNATAMI",{"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "NATInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "SecurityGroups": [{"Ref": "NATSecurityGroup"}],
+        "InstanceMonitoring": true,
+        "IamInstanceProfile": { "Ref": "EC2NATInstanceProfile" },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [ "\n", [
+              "#!/bin/bash -eux",
+              {"Fn::Join": ["", ["echo ", {"Ref": "ZoneTwoNATENI"}, " > /var/tmp/eni-id.txt"]]},
+              "export my_instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+              "export my_availability_zone=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)",
+              "export my_zone_letter=$(echo -n $my_availability_zone | tail -c -1)",
+              "export my_eni_id=$(cat /var/tmp/eni-id.txt)",
+              {"Fn::Join": ["", ["export AWS_DEFAULT_REGION=", {"Ref": "AWS::Region"}]]},
+              "export retcode=1",
+              "while [ $retcode -ne 0 ]",
+              "do",
+              "    /usr/bin/aws ec2 attach-network-interface --network-interface-id ${my_eni_id} --instance-id ${my_instance_id} --device-index 1",
+              "    retcode=$?",
+              "done",
+              "[ \"$retcode\" -eq 0 ] && echo 'eni attachment successful' || echo 'eni attachment failed'",
+              "sleep 60",
+              "ifdown eth0",
+              "iptables -t nat -A POSTROUTING -j MASQUERADE",
+              "iptables -A FORWARD -j ACCEPT",
+              "echo 1 > /proc/sys/net/ipv4/ip_forward"
+            ]]
+          }
+        }
+      }
+    },
+    "NATZoneThreeLaunchConfiguration": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "AssociatePublicIpAddress" : true,
+        "ImageId": {"Fn::FindInMap": ["AWSNATAMI",{"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "NATInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "SecurityGroups": [{"Ref": "NATSecurityGroup"}],
+        "InstanceMonitoring": true,
+        "IamInstanceProfile": { "Ref": "EC2NATInstanceProfile" },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [ "\n", [
+              "#!/bin/bash -eux",
+              {"Fn::Join": ["", ["echo ", {"Ref": "ZoneThreeNATENI"}, " > /var/tmp/eni-id.txt"]]},
+              "export my_instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+              "export my_availability_zone=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)",
+              "export my_zone_letter=$(echo -n $my_availability_zone | tail -c -1)",
+              "export my_eni_id=$(cat /var/tmp/eni-id.txt)",
+              {"Fn::Join": ["", ["export AWS_DEFAULT_REGION=", {"Ref": "AWS::Region"}]]},
+              "export retcode=1",
+              "while [ $retcode -ne 0 ]",
+              "do",
+              "    /usr/bin/aws ec2 attach-network-interface --network-interface-id ${my_eni_id} --instance-id ${my_instance_id} --device-index 1",
+              "    retcode=$?",
+              "done",
+              "[ \"$retcode\" -eq 0 ] && echo 'eni attachment successful' || echo 'eni attachment failed'",
+              "sleep 60",
+              "ifdown eth0",
+              "iptables -t nat -A POSTROUTING -j MASQUERADE",
+              "iptables -A FORWARD -j ACCEPT",
+              "echo 1 > /proc/sys/net/ipv4/ip_forward"
+            ]]
+          }
+        }
+      }
+    },
+    "NATZoneOneASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": [
+          {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [0, {"Ref": "AvailabilityZones"}]}]]}
+        ],
+        "Cooldown": "300",
+        "HealthCheckGracePeriod": "3600",
+        "HealthCheckType": "EC2",
+        "LaunchConfigurationName": {"Ref": "NATZoneOneLaunchConfiguration"},
+        "MaxSize": "1",
+        "MinSize": "1",
+        "Tags": [{"Key": "Name", "Value": "ZoneOneNAT", "PropagateAtLaunch": "true"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}, "PropagateAtLaunch": "true"}],
+        "VPCZoneIdentifier": [{"Ref": "PublicSubnet0"}]
+      }
+    },
+    "NATZoneTwoASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": [
+          {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [1, {"Ref": "AvailabilityZones"}]}]]}
+        ],
+        "Cooldown": "300",
+        "HealthCheckGracePeriod": "3600",
+        "HealthCheckType": "EC2",
+        "LaunchConfigurationName": {"Ref": "NATZoneTwoLaunchConfiguration"},
+        "MaxSize": "1",
+        "MinSize": "1",
+        "Tags": [{"Key": "Name", "Value": "ZoneTwoNAT", "PropagateAtLaunch": "true"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}, "PropagateAtLaunch": "true"}],
+        "VPCZoneIdentifier": [{"Ref": "PublicSubnet1"}]
+      }
+    },
+    "NATZoneThreeASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": [
+          {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [2, {"Ref": "AvailabilityZones"}]}]]}
+        ],
+        "Cooldown": "300",
+        "HealthCheckGracePeriod": "3600",
+        "HealthCheckType": "EC2",
+        "LaunchConfigurationName": {"Ref": "NATZoneThreeLaunchConfiguration"},
+        "MaxSize": "1",
+        "MinSize": "1",
+        "Tags": [{"Key": "Name", "Value": "ZoneThreeNAT", "PropagateAtLaunch": "true"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}, "PropagateAtLaunch": "true"}],
+        "VPCZoneIdentifier": [{"Ref": "PublicSubnet2"}]
+      }
+    },
+
+
+
+    "BastionInstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "DefaultInstance",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "IdentificationBucket"}]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "IdentificationBucket"}, "/*"]]}
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EC2BastionInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{"Ref": "BastionInstanceRole"}]
+      }
+    },
+    "BastionHost": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {"Fn::FindInMap": ["BASTIONAMI", {"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "BastionInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "IamInstanceProfile": {"Ref": "EC2BastionInstanceProfile"},
+        "NetworkInterfaces": [
+          {
+            "AssociatePublicIpAddress": "true",
+            "DeleteOnTermination": "true",
+            "Description": "ENI for bastion host",
+            "DeviceIndex": 0,
+            "GroupSet": [{"Ref": "BastionSecurityGroup"}],
+            "SubnetId": {"Ref": "PublicSubnet0"}
+          }
+        ],
+        "Tags": [{"Key": "Name", "Value": "BastionHost"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "BastionSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enables access to the bastion host",
+        "SecurityGroupEgress": [
+          {"CidrIp": "10.0.0.0/24", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.1.0/24", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.2.0/24", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.16.0/20", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.32.0/20", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.48.0/20", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8500, "IpProtocol": "tcp", "ToPort": 8500},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 443, "IpProtocol": "tcp", "ToPort": 443},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "tcp", "ToPort": 123},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "udp", "ToPort": 123},
+          {"CidrIp": "0.0.0.0/0", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "SecurityGroupIngress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.0.0/8", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "Tags": [{"Key": "Name", "Value": "BastionSecurityGroup"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "Route53BastionRecordSet": {
+       "Type": "AWS::Route53::RecordSet",
+       "Properties": {
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "Comment": "CNAME record for stan- admin db in dev env",
+          "Name": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "bastion.stan2020.com"]]},
+          "Type": "A",
+          "TTL": "300",
+          "ResourceRecords": [{"Fn::GetAtt": ["BastionHost", "PublicIp"]}]
+       }
+    },
+
+
+
+    "DefaultInstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "DefaultInstance",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "DockerImageBucket"}]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "DockerImageBucket"}, "/*"]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "DeployableArtifactBucket"}]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "DeployableArtifactBucket"}, "/*"]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "IdentificationBucket"}]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:GetObject",
+                  "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "IdentificationBucket"}, "/*"]]}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["ec2:DescribeTags"],
+                  "Resource": ["*"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+
+
+
+    "ConsulHost1Xface": {
+      "Type": "AWS::EC2::NetworkInterface",
+      "Properties": {
+        "SubnetId": {"Ref": "PrivateSubnet0"},
+        "Description": "ENI for Consul host1",
+        "GroupSet": [{"Ref": "ConsulSecurityGroup"}],
+        "PrivateIpAddresses": [{"PrivateIpAddress": "10.0.16.4", "Primary": true}]
+      }
+    },
+    "ConsulHost2Xface": {
+      "Type": "AWS::EC2::NetworkInterface",
+      "Properties": {
+        "SubnetId": {"Ref": "PrivateSubnet1"},
+        "Description": "ENI for Consul host2",
+        "GroupSet": [{"Ref": "ConsulSecurityGroup"}],
+        "PrivateIpAddresses": [{"PrivateIpAddress": "10.0.32.4", "Primary": true}]
+      }
+    },
+    "ConsulHost3Xface": {
+      "Type": "AWS::EC2::NetworkInterface",
+      "Properties": {
+        "SubnetId": {"Ref": "PrivateSubnet2"},
+        "Description": "ENI for Consul host3",
+        "GroupSet": [{"Ref": "ConsulSecurityGroup"}],
+        "PrivateIpAddresses": [{"PrivateIpAddress": "10.0.48.4", "Primary": true}]
+      }
+    },
+    "ConsulSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enables internal access to Consul",
+        "SecurityGroupEgress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": "-1", "IpProtocol": "-1"}
+        ],
+        "SecurityGroupIngress": [
+          {"CidrIp": "10.0.0.0/8", "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 53, "IpProtocol": "tcp", "ToPort": 53},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8400, "IpProtocol": "tcp", "ToPort": 8400},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8500, "IpProtocol": "tcp", "ToPort": 8500},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8600, "IpProtocol": "tcp", "ToPort": 8600},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8300, "IpProtocol": "tcp", "ToPort": 8302},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8300, "IpProtocol": "udp", "ToPort": 8302},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 53, "IpProtocol": "udp", "ToPort": 53},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8400, "IpProtocol": "udp", "ToPort": 8400},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8500, "IpProtocol": "udp", "ToPort": 8500},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8600, "IpProtocol": "udp", "ToPort": 8600},
+          {"CidrIp": "10.0.0.0/8", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "Tags": [{"Key": "Name", "Value": "ConsulSecurityGroup"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "ConsulInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{"Ref":"DefaultInstanceRole"}]
+      }
+    },
+    "ConsulHost1": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "ConsulInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [0, {"Ref": "AvailabilityZones"}]}]]},
+        "NetworkInterfaces": [{"NetworkInterfaceId": {"Ref": "ConsulHost1Xface"}, "DeviceIndex": 0}],
+        "IamInstanceProfile": {"Ref": "ConsulInstanceProfile"},
+        "UserData": "IyEvYmluL2Jhc2gKSU5TVEFOQ0VfSUQ9YGN1cmwgaHR0cDovLzE2OS4yNTQuMTY5LjI1NC9sYXRlc3QvbWV0YS1kYXRhL2luc3RhbmNlLWlkYApQUklWQVRFX0lQPWBjdXJsIGh0dHA6Ly8xNjkuMjU0LjE2OS4yNTQvbGF0ZXN0L21ldGEtZGF0YS9sb2NhbC1pcHY0YAoKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJkb2NrZXJfaW1hZ2VfYnVja2V0IjogInMzOi8vZG9ja2VyLWltYWdlcy1lbGx1Y2lhbiIsCiAgICAgICAgInMzX3NzaF9hdXRob3JpemVkX2tleXMiOiAiczM6Ly9laWgtY3JlZGVudGlhbHMvYXV0aG9yaXplZF9rZXlzIgogICAgfSwKICAgICJhcHAiOiB7CiAgICAgICAgICAgICJpbWFnZSI6ICJkb2NrZXItY29uc3VsIiwKICAgICAgICAgICAgInZlcnNpb24iOiAiMC42LjAiLAogICAgICAgICAgICAidXNlc1NpZGVraWNrIjogZmFsc2UsCiAgICAgICAgICAgICJwb3J0cyI6IFsicHJpdmF0ZV9pcDo4MzAwOjgzMDAiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEvdWRwIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyL3VkcCIsICJwcml2YXRlX2lwOjg0MDA6ODQwMCIsICJwcml2YXRlX2lwOjg1MDA6ODUwMCJdLAogICAgICAgICAgICAiYXJncyI6IFsiLWxvZy1sZXZlbCBkZWJ1ZyIsICItbm9kZSAkSU5TVEFOQ0VfSUQiLCAiLXNlcnZlciIsICItYm9vdHN0cmFwLWV4cGVjdCAzIiwgIi1hZHZlcnRpc2UgJFBSSVZBVEVfSVAiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40IiwgIi1yZXRyeS1qb2luIDEwLjE2LjMyLjQiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40OCJdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgIkVOQ1JZUFRJT05fS0VZIjoiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAiQ0FfQ0VSVCI6Ii0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAiQ09OU1VMX0NFUlQiOiItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICJDT05TVUxfS0VZIjoiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgICAgfQp9CkVPRgpjaG93biByb290OnJvb3QgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNobW9kIDA3MDAgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNkIC9vcHQvYW5zaWJsZSAmJiAuL3N0YXJ0dXAuc2g=",
+        "Tags": [{"Key": "Name","Value": "ConsulHost1"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "ConsulHost2": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {"Fn::FindInMap": ["DOCKERAMI", {"Ref": "AWS::Region"}, "AMI"]
+        },
+        "InstanceType": {"Ref": "ConsulInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [1, {"Ref": "AvailabilityZones"}]}]]},
+        "NetworkInterfaces": [{"NetworkInterfaceId": {"Ref": "ConsulHost2Xface"}, "DeviceIndex": 0}],
+        "IamInstanceProfile": {"Ref": "ConsulInstanceProfile"},
+        "UserData": "IyEvYmluL2Jhc2gKSU5TVEFOQ0VfSUQ9YGN1cmwgaHR0cDovLzE2OS4yNTQuMTY5LjI1NC9sYXRlc3QvbWV0YS1kYXRhL2luc3RhbmNlLWlkYApQUklWQVRFX0lQPWBjdXJsIGh0dHA6Ly8xNjkuMjU0LjE2OS4yNTQvbGF0ZXN0L21ldGEtZGF0YS9sb2NhbC1pcHY0YAoKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJkb2NrZXJfaW1hZ2VfYnVja2V0IjogInMzOi8vZG9ja2VyLWltYWdlcy1lbGx1Y2lhbiIsCiAgICAgICAgInMzX3NzaF9hdXRob3JpemVkX2tleXMiOiAiczM6Ly9laWgtY3JlZGVudGlhbHMvYXV0aG9yaXplZF9rZXlzIgogICAgfSwKICAgICJhcHAiOiB7CiAgICAgICAgICAgICJpbWFnZSI6ICJkb2NrZXItY29uc3VsIiwKICAgICAgICAgICAgInZlcnNpb24iOiAiMC42LjAiLAogICAgICAgICAgICAidXNlc1NpZGVraWNrIjogZmFsc2UsCiAgICAgICAgICAgICJwb3J0cyI6IFsicHJpdmF0ZV9pcDo4MzAwOjgzMDAiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEvdWRwIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyL3VkcCIsICJwcml2YXRlX2lwOjg0MDA6ODQwMCIsICJwcml2YXRlX2lwOjg1MDA6ODUwMCJdLAogICAgICAgICAgICAiYXJncyI6IFsiLWxvZy1sZXZlbCBkZWJ1ZyIsICItbm9kZSAkSU5TVEFOQ0VfSUQiLCAiLXNlcnZlciIsICItYm9vdHN0cmFwLWV4cGVjdCAzIiwgIi1hZHZlcnRpc2UgJFBSSVZBVEVfSVAiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40IiwgIi1yZXRyeS1qb2luIDEwLjE2LjMyLjQiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40OCJdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgIkVOQ1JZUFRJT05fS0VZIjoiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAiQ0FfQ0VSVCI6Ii0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAiQ09OU1VMX0NFUlQiOiItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICJDT05TVUxfS0VZIjoiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgICAgfQp9CkVPRgpjaG93biByb290OnJvb3QgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNobW9kIDA3MDAgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNkIC9vcHQvYW5zaWJsZSAmJiAuL3N0YXJ0dXAuc2g=",
+        "Tags": [{"Key": "Name", "Value": "ConsulHost2"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+    "ConsulHost3": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {"Fn::FindInMap": ["DOCKERAMI", {"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "ConsulInstanceType"},
+        "KeyName": {"Ref": "KeyName"},
+        "AvailabilityZone": {"Fn::Join": ["", [{"Ref": "AWS::Region"}, {"Fn::Select": [2, {"Ref": "AvailabilityZones"}]}]]},
+        "NetworkInterfaces": [{"NetworkInterfaceId": {"Ref": "ConsulHost3Xface"}, "DeviceIndex": 0}],
+        "IamInstanceProfile": {"Ref": "ConsulInstanceProfile"},
+        "UserData": "IyEvYmluL2Jhc2gKSU5TVEFOQ0VfSUQ9YGN1cmwgaHR0cDovLzE2OS4yNTQuMTY5LjI1NC9sYXRlc3QvbWV0YS1kYXRhL2luc3RhbmNlLWlkYApQUklWQVRFX0lQPWBjdXJsIGh0dHA6Ly8xNjkuMjU0LjE2OS4yNTQvbGF0ZXN0L21ldGEtZGF0YS9sb2NhbC1pcHY0YAoKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJkb2NrZXJfaW1hZ2VfYnVja2V0IjogInMzOi8vZG9ja2VyLWltYWdlcy1lbGx1Y2lhbiIsCiAgICAgICAgInMzX3NzaF9hdXRob3JpemVkX2tleXMiOiAiczM6Ly9laWgtY3JlZGVudGlhbHMvYXV0aG9yaXplZF9rZXlzIgogICAgfSwKICAgICJhcHAiOiB7CiAgICAgICAgICAgICJpbWFnZSI6ICJkb2NrZXItY29uc3VsIiwKICAgICAgICAgICAgInZlcnNpb24iOiAiMC42LjAiLAogICAgICAgICAgICAidXNlc1NpZGVraWNrIjogZmFsc2UsCiAgICAgICAgICAgICJwb3J0cyI6IFsicHJpdmF0ZV9pcDo4MzAwOjgzMDAiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEiLCAicHJpdmF0ZV9pcDo4MzAxOjgzMDEvdWRwIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyIiwgInByaXZhdGVfaXA6ODMwMjo4MzAyL3VkcCIsICJwcml2YXRlX2lwOjg0MDA6ODQwMCIsICJwcml2YXRlX2lwOjg1MDA6ODUwMCJdLAogICAgICAgICAgICAiYXJncyI6IFsiLWxvZy1sZXZlbCBkZWJ1ZyIsICItbm9kZSAkSU5TVEFOQ0VfSUQiLCAiLXNlcnZlciIsICItYm9vdHN0cmFwLWV4cGVjdCAzIiwgIi1hZHZlcnRpc2UgJFBSSVZBVEVfSVAiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40IiwgIi1yZXRyeS1qb2luIDEwLjE2LjMyLjQiLCAiLXJldHJ5LWpvaW4gMTAuMC4xNi40OCJdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgIkVOQ1JZUFRJT05fS0VZIjoiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAiQ0FfQ0VSVCI6Ii0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAiQ09OU1VMX0NFUlQiOiItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICJDT05TVUxfS0VZIjoiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgICAgfQp9CkVPRgpjaG93biByb290OnJvb3QgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNobW9kIDA3MDAgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNkIC9vcHQvYW5zaWJsZSAmJiAuL3N0YXJ0dXAuc2g=",
+        "Tags": [{"Key": "Name", "Value": "ConsulHost3"}, {"Key": "Environment", "Value": {"Ref": "EihEnv"}}]
+      }
+    },
+
+
+
+    "EC2ServiceInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{"Ref": "DefaultInstanceRole"}]
+      }
+    },
+    "EC2ServiceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enable HTTP access on 80 from ELB.",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"SourceSecurityGroupId": {"Ref": "BastionSecurityGroup"}, "FromPort": 22, "IpProtocol": "tcp", "ToPort": 22},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 3000, "IpProtocol": "tcp", "ToPort": 3100},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 53, "IpProtocol": "tcp", "ToPort": 53},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8400, "IpProtocol": "tcp", "ToPort": 8400},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8500, "IpProtocol": "tcp", "ToPort": 8500},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8600, "IpProtocol": "tcp", "ToPort": 8600},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8300, "IpProtocol": "tcp", "ToPort": 8302},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8300, "IpProtocol": "udp", "ToPort": 8302},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 53, "IpProtocol": "udp", "ToPort": 53},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8400, "IpProtocol": "udp", "ToPort": 8400},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8500, "IpProtocol": "udp", "ToPort": 8500},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "tcp", "ToPort": 123},
+          {"CidrIp": "0.0.0.0/0", "FromPort": 123, "IpProtocol": "udp", "ToPort": 123},
+          {"CidrIp": "10.0.0.0/8", "FromPort": 8600, "IpProtocol": "udp", "ToPort": 8600},
+          {"CidrIp": "10.0.0.0/8", "FromPort": "-1", "IpProtocol": "icmp", "ToPort": "-1"}
+        ],
+        "SecurityGroupEgress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": "-1", "IpProtocol": "-1"}
+        ]
+      }
+    },
+    "ElbPrivateSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enable HTTP access on 80 from ELB.",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"CidrIp": "10.0.0.0/8", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80}
+        ],
+        "SecurityGroupEgress": [
+          {"CidrIp": "10.0.0.0/8", "FromPort": 80, "IpProtocol": "tcp", "ToPort": 80}
+        ]
+      }
+    },
+    "ElbPublicSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enable HTTP access on 80 from ELB.",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": 443, "IpProtocol": "tcp", "ToPort": 443}
+        ],
+        "SecurityGroupEgress": [
+          {"FromPort": 80, "IpProtocol": "tcp", "ToPort": 80, "SourceSecurityGroupId": {"Ref": "EC2ServiceSecurityGroup"}}
+        ]
+      }
+    },
+
+
+
+
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription": "Open database for access",
+        "SecurityGroupIngress" : [{
+          "IpProtocol" : "tcp",
+          "FromPort" : "5432",
+          "ToPort" : "5432",
+          "CidrIp": "10.0.0.0/8"
+        }],
+        "VpcId": {"Ref": "VPC"}
+      }
+    },
+    "QueueDB": {
+      "Type": "AWS::CloudFormation::Stack",
+       "Properties": {
+          "Parameters": {
+            "VPC": { "Ref": "VPC"},
+            "DBInstanceType": { "Ref": "DBQueueInstanceType" },
+            "DBSubnets": {"Fn::Join": [ ",", [{ "Ref": "PrivateSubnet0" }, { "Ref": "PrivateSubnet1" }, { "Ref": "PrivateSubnet2" }]] },
+            "EngineVersion": "9.3.5",
+            "DBUser": { "Ref": "DBQueueUser"},
+            "DBPassword": { "Ref": "DBQueuePassword" },
+            "DBName": { "Ref": "DBQueueName" },
+            "DBAllocatedStorage": { "Ref": "DBQueueAllocatedStorage" },
+            "InstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+            "HostedZoneId": {"Ref": "HostedZoneId"},
+            "EihEnv": {"Ref": "EihEnv"},
+            "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "queue-db"]]},
+            "DatabaseSecurityGroups": {"Fn::Join": [",", [{"Ref":"DatabaseSecurityGroup"}]]}
+          },
+          "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "database.json"]]}
+       }
+    },
+    "AdminDB": {
+      "Type": "AWS::CloudFormation::Stack",
+       "Properties": {
+          "Parameters": {
+            "VPC": { "Ref": "VPC"},
+            "DBInstanceType": { "Ref": "DBQueueInstanceType" },
+            "DBSubnets": {"Fn::Join": [ ",", [{ "Ref": "PrivateSubnet0" }, { "Ref": "PrivateSubnet1" }, { "Ref": "PrivateSubnet2" }]] },
+            "EngineVersion": "9.3.5",
+            "DBUser": { "Ref": "DBAdminUser"},
+            "DBPassword": { "Ref": "DBAdminPassword" },
+            "DBName": { "Ref": "DBAdminName" },
+            "DBAllocatedStorage": { "Ref": "DBAdminAllocatedStorage" },
+            "InstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+            "HostedZoneId": {"Ref": "HostedZoneId"},
+            "EihEnv": {"Ref": "EihEnv"},
+            "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "admin-db"]]},
+            "DatabaseSecurityGroups": {"Fn::Join": [",", [{"Ref":"DatabaseSecurityGroup"}]]}
+          },
+          "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "database.json"]]}
+       }
+    },
+
+
+
+    "PersistenceServiceLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJkb2N1bWVudC1wZXJzaXN0ZW5jZS1zZXJ2aWNlIiwKICAgICAgICAidXNlc1NpZGVraWNrIjogdHJ1ZSwKICAgICAgICAibG9jYWxseUxvYWRCYWxhbmNlZCI6IGZhbHNlLAogICAgICAgICJpbnN0YW5jZXMiOiAxLAogICAgICAgICJ2ZXJzaW9uIjogIjAuMi4wIiwKICAgICAgICAic2VydmljZU5hbWUiOiAiZG9jdW1lbnQtcGVyc2lzdGVuY2Utc2VydmljZSIsCiAgICAgICAgImVuYWJsZUhlYWx0aENoZWNrIjogZmFsc2UsCiAgICAgICAgInByZWhlYXRTaWRla2ljayI6IHsKICAgICAgICAgICAgImltYWdlIjogInNpZGVraWNrLXByZWhlYXQiLAogICAgICAgICAgICAidmVyc2lvbiI6ICIwLjUuMCIsCiAgICAgICAgICAgICJzZXJ2aWNlcyI6IFsibW9jay1hdXRoIiwgImh1Yi13d3ctYXV0aCIsICJodWItY29uZmlndXJhdGlvbi1hcGkiLCAiaHViLWNvbmZpZ3VyYXRpb24tdWkiLCAiaHViLXB1Ymxpc2gtYXBpIiwgImRvY3VtZW50LXBlcnNpc3RlbmNlLXNlcnZpY2UiLCAiaHViLW1lc3NhZ2UtcXVldWUtc2VydmljZSJdCiAgICAgICAgfSwKICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAiUkVQX0ZBQ19PUFRJT05TIjogIntcImRvY3VtZW50UHJvdmlkZXJcIjogXCJwb3N0Z3Jlc1wifSIsCiAgICAgICAgICAiREFUQUJBU0VfQ09ORklHIjogIlt7XCJuYW1lXCI6IFwiaHViYWRtaW5cIixcImhvc3RzXCIgOiBbXCJkZXZhZG1pbi1kYi4yMDIwYXIuY29tXCJdLFwicG9ydHNcIjogW1wiNTQzMlwiXSxcImNyZWRlbnRpYWxzXCI6IHtcInVzZXJuYW1lXCI6IFwicG9zdGdyZXNcIiwgXCJwYXNzd29yZFwiOiBcInVfcGlja19pdFwifSxcIm9wdGlvbnNcIjoge319XSIKICAgICAgICB9CiAgICB9Cn0KRU9GCmNob3duIHJvb3Q6cm9vdCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2htb2QgMDcwMCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2QgL29wdC9hbnNpYmxlICYmIC4vc3RhcnR1cC5zaA=="
+       }
+    },
+    "PersistenceService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "DependsOn": ["ConsulHost1", "ConsulHost2", "ConsulHost3", "AdminDB"],
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "document-persistence-service",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "false",
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "PersistenceServiceLaunchConfig"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+    "PublisherServiceLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJodWItcHVibGlzaC1hcGkiLAogICAgICAgICJ1c2VzU2lkZWtpY2siOiB0cnVlLAogICAgICAgICJsb2NhbGx5TG9hZEJhbGFuY2VkIjogdHJ1ZSwKICAgICAgICAiaW5zdGFuY2VzIjogMSwKICAgICAgICAidmVyc2lvbiI6ICIwLjE0LjciLAogICAgICAgICJzZXJ2aWNlTmFtZSI6ICJodWItcHVibGlzaC1hcGkiLAogICAgICAgICJlbmFibGVIZWFsdGhDaGVjayI6IGZhbHNlLAogICAgICAgICJwcmVoZWF0U2lkZWtpY2siOiB7CiAgICAgICAgICAgICJpbWFnZSI6ICJzaWRla2ljay1wcmVoZWF0IiwKICAgICAgICAgICAgInZlcnNpb24iOiAiMC41LjAiLAogICAgICAgICAgICAic2VydmljZXMiOiBbIm1vY2stYXV0aCIsICJodWItd3d3LWF1dGgiLCAiaHViLWNvbmZpZ3VyYXRpb24tYXBpIiwgImh1Yi1jb25maWd1cmF0aW9uLXVpIiwgImh1Yi1wdWJsaXNoLWFwaSIsICJkb2N1bWVudC1wZXJzaXN0ZW5jZS1zZXJ2aWNlIiwgImh1Yi1tZXNzYWdlLXF1ZXVlLXNlcnZpY2UiXQogICAgICAgIH0sCiAgICAgICAgImVudmlyb25tZW50IjogewogICAgICAgICAgIlNJREVLSUNLX1BPUlQiOiIzMDAwIiwKICAgICAgICAgICJKV1RfU0hBUkVEX1NFQ1JFVCI6ICJpdCBzY2FsZXMgcmlnaHQgdXAiLAogICAgICAgICAgIlBPU1RHUkVTX0hPU1QiOiAiZGV2cXVldWUtZGIuMjAyMGFyLmNvbSIsCiAgICAgICAgICAiUE9TVEdSRVNfVVNFUk5BTUUiOiAicG9zdGdyZXMiLAogICAgICAgICAgIlBPU1RHUkVTX1BBU1NXT1JEIjogInVfcGlja19pdCIsCiAgICAgICAgICAiUE9TVEdSRVNfUE9SVCI6ICI1NDMyIiwKICAgICAgICAgICJQT1NUR1JFU19EQVRBQkFTRSI6ICJxdWV1ZSIsCiAgICAgICAgICAiUE9TVEdSRVNfUE9PTF9NQVhfU0laRSI6ICIyMCIsCiAgICAgICAgICAiUE9TVEdSRVNfUE9PTF9NSU5fU0laRSI6ICIyIiwKICAgICAgICAgICJBVVRIRU5USUNBVElPTl9TRVJWSUNFIjogImFwaS1hdXRoZW50aWNhdGlvbi1zZXJ2aWNlIiwKICAgICAgICAgICJIVUJfQ09ORklHVVJBVElPTl9BUEkiOiAiaHViLWNvbmZpZ3VyYXRpb24tYXBpIgogICAgICAgIH0KICAgIH0KfQpFT0YKY2hvd24gcm9vdDpyb290IC9vcHQvYW5zaWJsZS9pbnN0YW5jZV9jb25maWcuanNvbgpjaG1vZCAwNzAwIC9vcHQvYW5zaWJsZS9pbnN0YW5jZV9jb25maWcuanNvbgpjZCAvb3B0L2Fuc2libGUgJiYgLi9zdGFydHVwLnNo"
+       }
+    },
+    "PublisherService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "DependsOn": ["ConsulHost1", "ConsulHost2", "ConsulHost3", "AdminDB"],
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "stan--publish-api",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}]]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "PublisherServiceLaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "stan--publish-api"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+    "stan-ConfigurationUILaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJodWItY29uZmlndXJhdGlvbi11aSIsCiAgICAgICAgInVzZXNTaWRla2ljayI6IHRydWUsCiAgICAgICAgImxvY2FsbHlMb2FkQmFsYW5jZWQiOiB0cnVlLAogICAgICAgICJpbnN0YW5jZXMiOiAxLAogICAgICAgICJ2ZXJzaW9uIjogIjAuMTkuMCIsCiAgICAgICAgInNlcnZpY2VOYW1lIjogImh1Yi1jb25maWd1cmF0aW9uLXVpIiwKICAgICAgICAiZW5hYmxlSGVhbHRoQ2hlY2siOiBmYWxzZSwKICAgICAgICAicHJlaGVhdFNpZGVraWNrIjogewogICAgICAgICAgICAiaW1hZ2UiOiAic2lkZWtpY2stcHJlaGVhdCIsCiAgICAgICAgICAgICJ2ZXJzaW9uIjogIjAuNS4wIiwKICAgICAgICAgICAgInNlcnZpY2VzIjogWyJtb2NrLWF1dGgiLCAiaHViLXd3dy1hdXRoIiwgImh1Yi1jb25maWd1cmF0aW9uLWFwaSIsICJodWItY29uZmlndXJhdGlvbi11aSIsICJodWItcHVibGlzaC1hcGkiLCAiZG9jdW1lbnQtcGVyc2lzdGVuY2Utc2VydmljZSIsICJodWItbWVzc2FnZS1xdWV1ZS1zZXJ2aWNlIl0KICAgICAgICB9LAogICAgICAgICJlbnZpcm9ubWVudCI6IHsKICAgICAgICAgICJBUElfVVJMIjogImh0dHBzOi8vZGV2aHViLWNvbmZpZ3VyYXRpb24tYXBpLjIwMjBhci5jb20iLAogICAgICAgICAgIkFVVEhfVVJMIjogImh0dHBzOi8vZGV2bW9jay1hdXRoLjIwMjBhci5jb20iCiAgICAgICAgfQogICAgfQp9CkVPRgpjaG93biByb290OnJvb3QgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNobW9kIDA3MDAgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNkIC9vcHQvYW5zaWJsZSAmJiAuL3N0YXJ0dXAuc2g="
+       }
+    },
+    "stan-ConfigurationUIService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "stan--configuration-ui",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}]]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "stan-ConfigurationUILaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "stan--configuration-ui"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+    "stan-ConfigurationApiLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJodWItY29uZmlndXJhdGlvbi1hcGkiLAogICAgICAgICJ1c2VzU2lkZWtpY2siOiB0cnVlLAogICAgICAgICJsb2NhbGx5TG9hZEJhbGFuY2VkIjogdHJ1ZSwKICAgICAgICAiaW5zdGFuY2VzIjogMSwKICAgICAgICAidmVyc2lvbiI6ICIwLjcuMSIsCiAgICAgICAgInNlcnZpY2VOYW1lIjogImh1Yi1jb25maWd1cmF0aW9uLWFwaSIsCiAgICAgICAgImVuYWJsZUhlYWx0aENoZWNrIjogZmFsc2UsCiAgICAgICAgInByZWhlYXRTaWRla2ljayI6IHsKICAgICAgICAgICAgImltYWdlIjogInNpZGVraWNrLXByZWhlYXQiLAogICAgICAgICAgICAidmVyc2lvbiI6ICIwLjUuMCIsCiAgICAgICAgICAgICJzZXJ2aWNlcyI6IFsibW9jay1hdXRoIiwgImh1Yi13d3ctYXV0aCIsICJodWItY29uZmlndXJhdGlvbi1hcGkiLCAiaHViLWNvbmZpZ3VyYXRpb24tdWkiLCAiaHViLXB1Ymxpc2gtYXBpIiwgImRvY3VtZW50LXBlcnNpc3RlbmNlLXNlcnZpY2UiLCAiaHViLW1lc3NhZ2UtcXVldWUtc2VydmljZSJdCiAgICAgICAgfSwKICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAiSldUX1NIQVJFRF9TRUNSRVQiOiAiaXQgc2NhbGVzIHJpZ2h0IHVwIiwKICAgICAgICAgICJTSURFS0lDS19QT1JUIjogIjMwMDAiLAogICAgICAgICAgIlBFUlNJU1RFTkNFX1NFUlZJQ0UiOiAiZG9jdW1lbnQtcGVyc2lzdGVuY2Utc2VydmljZSIsCiAgICAgICAgICAiQVVUSEVOVElDQVRJT05fU0VSVklDRSI6ICJtb2NrLWF1dGgiLAogICAgICAgICAgIkhVQl9DT05GSUdVUkFUSU9OX0FQSSI6ICJodWItY29uZmlndXJhdGlvbi1hcGkiLAogICAgICAgICAgIkhVQl9QVUJMSVNIX0FQSSI6ICJodWItcHVibGlzaC1hcGkiCiAgICAgICAgfQogICAgfQp9CkVPRgpjaG93biByb290OnJvb3QgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNobW9kIDA3MDAgL29wdC9hbnNpYmxlL2luc3RhbmNlX2NvbmZpZy5qc29uCmNkIC9vcHQvYW5zaWJsZSAmJiAuL3N0YXJ0dXAuc2g="
+       }
+    },
+    "stan-ConfigurationApi": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "stan--configuration-api",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}] ]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "stan-ConfigurationApiLaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "stan--configuration-api"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+    "stan-AuthServiceLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJodWItd3d3LWF1dGgiLAogICAgICAgICJ1c2VzU2lkZWtpY2siOiB0cnVlLAogICAgICAgICJsb2NhbGx5TG9hZEJhbGFuY2VkIjogdHJ1ZSwKICAgICAgICAiaW5zdGFuY2VzIjogMSwKICAgICAgICAidmVyc2lvbiI6ICIwLjAuMSIsCiAgICAgICAgImVuYWJsZUhlYWx0aENoZWNrIjogZmFsc2UsCiAgICAgICAgInNlcnZpY2VOYW1lIjogImh1Yi13d3ctYXV0aCIsCiAgICAgICAgInByZWhlYXRTaWRla2ljayI6IHsKICAgICAgICAgICAgImltYWdlIjogInNpZGVraWNrLXByZWhlYXQiLAogICAgICAgICAgICAidmVyc2lvbiI6ICIwLjUuMCIsCiAgICAgICAgICAgICJzZXJ2aWNlcyI6IFsibW9jay1hdXRoIiwgImh1Yi13d3ctYXV0aCIsICJodWItY29uZmlndXJhdGlvbi1hcGkiLCAiaHViLWNvbmZpZ3VyYXRpb24tdWkiLCAiaHViLXB1Ymxpc2gtYXBpIiwgImRvY3VtZW50LXBlcnNpc3RlbmNlLXNlcnZpY2UiLCAiaHViLW1lc3NhZ2UtcXVldWUtc2VydmljZSJdCiAgICAgICAgfSwKICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAiSldUX1NIQVJFRF9TRUNSRVQiOiAiaXQgc2NhbGVzIHJpZ2h0IHVwIiwKICAgICAgICAgICJTSURFS0lDS19QT1JUIjogIjMwMDAiLAogICAgICAgICAgIkxPR19MRVZFTCI6ICJ0cmFjZSIsCiAgICAgICAgICAiSFVCX0NPTkZJR1VSQVRJT05fQVBJIjogImh1Yi1jb25maWd1cmF0aW9uLWFwaSIKICAgICAgICB9CiAgICB9Cn0KRU9GCmNob3duIHJvb3Q6cm9vdCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2htb2QgMDcwMCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2QgL29wdC9hbnNpYmxlICYmIC4vc3RhcnR1cC5zaA=="
+       }
+    },
+    "stan-AuthService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "stan--www-auth",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}] ]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "stan-AuthServiceLaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "stan--www-auth"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+    "MockAuthServiceLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJtb2NrLWF1dGgiLAogICAgICAgICJ1c2VzU2lkZWtpY2siOiB0cnVlLAogICAgICAgICJsb2NhbGx5TG9hZEJhbGFuY2VkIjogdHJ1ZSwKICAgICAgICAiaW5zdGFuY2VzIjogMSwKICAgICAgICAidmVyc2lvbiI6ICIwLjEuMiIsCiAgICAgICAgImVuYWJsZUhlYWx0aENoZWNrIjogZmFsc2UsCiAgICAgICAgInNlcnZpY2VOYW1lIjogIm1vY2stYXV0aCIsCiAgICAgICAgInByZWhlYXRTaWRla2ljayI6IHsKICAgICAgICAgICAgImltYWdlIjogInNpZGVraWNrLXByZWhlYXQiLAogICAgICAgICAgICAidmVyc2lvbiI6ICIwLjUuMCIsCiAgICAgICAgICAgICJzZXJ2aWNlcyI6IFsibW9jay1hdXRoIiwgImh1Yi13d3ctYXV0aCIsICJodWItY29uZmlndXJhdGlvbi1hcGkiLCAiaHViLWNvbmZpZ3VyYXRpb24tdWkiLCAiaHViLXB1Ymxpc2gtYXBpIiwgImRvY3VtZW50LXBlcnNpc3RlbmNlLXNlcnZpY2UiLCAiaHViLW1lc3NhZ2UtcXVldWUtc2VydmljZSJdCiAgICAgICAgfSwKICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAiSldUX1NIQVJFRF9TRUNSRVQiOiAiaXQgc2NhbGVzIHJpZ2h0IHVwIiwKICAgICAgICAgICJTSURFS0lDS19QT1JUIjogIjMwMDAiLAogICAgICAgICAgIkxPR19MRVZFTCI6ICJ0cmFjZSIKICAgICAgICB9CiAgICB9Cn0KRU9GCmNob3duIHJvb3Q6cm9vdCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2htb2QgMDcwMCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2QgL29wdC9hbnNpYmxlICYmIC4vc3RhcnR1cC5zaA=="
+       }
+    },
+    "MockAuthService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "mock-auth",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}] ]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "MockAuthServiceLaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "mock-auth"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    },
+
+
+    "MQSServiceLaunchConfig": {
+       "Type": "AWS::AutoScaling::LaunchConfiguration",
+       "Properties": {
+          "ImageId": {"Fn::FindInMap": ["DOCKERAMI",{"Ref": "AWS::Region"}, "AMI"]},
+          "InstanceType": {"Ref": "ServiceInstanceType"},
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroups": [{"Ref": "EC2ServiceSecurityGroup"}],
+          "InstanceMonitoring": true,
+          "IamInstanceProfile": { "Ref": "EC2ServiceInstanceProfile" },
+          "UserData": "IyEvYmluL2Jhc2gKY2F0IDw8RU9GID4vb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KewogICAgImVudmlyb25tZW50IjogewogICAgICAgICJsb2dnZXJzIjogWwogICAgICAgICAgICAibG9nZ2x5IgogICAgICAgIF0sCiAgICAgICAgImRvY2tlcl9pbWFnZV9idWNrZXQiOiAiczM6Ly9kb2NrZXItaW1hZ2VzLWVsbHVjaWFuIiwKICAgICAgICAiczNfc3NoX2F1dGhvcml6ZWRfa2V5cyI6ICJzMzovL2VpaC1jcmVkZW50aWFscy9hdXRob3JpemVkX2tleXMiLAogICAgICAgICJjb25zdWxfYWdlbnQiOiB7CiAgICAgICAgICAgICJqb2luIjogWwogICAgICAgICAgICAgICAgIjEwLjAuMTYuNCIsICIxMC4wLjMyLjQiLCAiMTAuMC40OC40IgogICAgICAgICAgICBdLAogICAgICAgICAgICAiZW52aXJvbm1lbnQiOiB7CiAgICAgICAgICAgICAgICAiRU5DUllQVElPTl9LRVkiOiAiY2c4U3RWWGJRSjBnUHZNZDlvN3lyZz09IiwKICAgICAgICAgICAgICAgICJDQV9DRVJUIjogIi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLXx8fE1JSURnekNDQW11Z0F3SUJBZ0lKQUpqY2FRdDhXVWorTUEwR0NTcUdTSWIzRFFFQkN3VUFNRmd4Q3pBSkJnTlZ8fHxCQVlUQWxWVE1STXdFUVlEVlFRSURBcFRiMjFsTFZOMFlYUmxNU0V3SHdZRFZRUUtEQmhKYm5SbGNtNWxkQ0JYfHx8YVdSbmFYUnpJRkIwZVNCTWRHUXhFVEFQQmdOVkJBTU1DRU52Ym5OMWJFTkJNQjRYRFRFME1URXhNVEUzTWpZd3x8fE1sb1hEVEkwTVRFd09ERTNNall3TWxvd1dERUxNQWtHQTFVRUJoTUNWVk14RXpBUkJnTlZCQWdNQ2xOdmJXVXR8fHxVM1JoZEdVeElUQWZCZ05WQkFvTUdFbHVkR1Z5Ym1WMElGZHBaR2RwZEhNZ1VIUjVJRXgwWkRFUk1BOEdBMVVFfHx8QXd3SVEyOXVjM1ZzUTBFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURGQkI2Tnx8fDZZd3ZuUzQyMlRzR1BFUDA3bW9nc3ZnUm1XQmRVNU5pOEk2TXJ6b0IrZW54Q0gya0lWYXdtYnY1enZkY0tvT0p8fHw1QThxdTVnajFTaHdaSjVDR3ZDN3J6OVY5ZkRiMTBKWjdadk5XV3Q1V1BoOVhHRTJEeXZ4VzBFLzIxN2d0UUUzfHx8SXFlV2F6VnFRcEdoN2kzQ0ZKb2NMWUs1VDJvUXFkbFBnRjIyenZMU0Uzb3cxbDNnMnp2Qzk3SnlFK0J2a1RNS3x8fHk2VGdqcnd1dDBqMGQxOHQyR3AvbnplUjFucENIZWpxY2ZJMXhRQkhGWEliWXJ5cUVSRXBrU2ZRQ0dkQlBZazB8fHxYblg5cnR5ZVpTb0VBRkNLZnVoSjEwQjV3Z0pDVk9DTm9JK2hkK3c4KzNZU1VReVN2QThPVUVFZHF0SC9QcFFIfHx8RDdwUTNaM2dDKzU0TmlRdEFnTUJBQUdqVURCT01CMEdBMVVkRGdRV0JCUXMrdGl2Z05ldGVTeG9kWHp0SFVJQXx8fE8yZm1EakFmQmdOVkhTTUVHREFXZ0JRcyt0aXZnTmV0ZVN4b2RYenRIVUlBTzJmbURqQU1CZ05WSFJNRUJUQUR8fHxBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFCUUlkR0UxM1VqdlZzQXNVNkhESFlicGpkVi8waUl6TjRMfHx8TUxmMUxOSm15dTFYUDlXblBVYU45eDBzS1VuazlGMUxGKzdPYndrOGVjUktRazZ4bzJUTnlKUzJlZXY2OUVKcnx8fDNiMlRscDFKQ0YvS1JNZGxHUDRneVlsWHBHaW1rRlNxQlh3dnVUQU81NkFNeTdoZUxGbUZ1M3RWNm1NRTZVTXp8fHxneS9KZUdFT3N4K05zZURjL0QrTlg5OSt0V1d6Zm15Z2k4OXFobGo2eVdlVWxNdEV1QVlLQWJ1TFc5VS9aYzE0fHx8ZVRBZGNpYitPbFhKUHRUaVhhVmtFZnE5K0E5Q0hFbzVXK2FsbW1Bd2ZvQlYreUc1d0JuRVpCczFRWVhKZ0R3K3x8fFVLNTNaTmgyNTllejRVcGFoeTF2azdoWXorOVJUQW04ZzhQMVdXRHFOSU1oSnFtMWlUVXd8fHwtLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tIiwKICAgICAgICAgICAgICAgICJDT05TVUxfQ0VSVCI6ICItLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS18fHxNSUlER1RDQ0FnR2dBd0lCQWdJQkNqQU5CZ2txaGtpRzl3MEJBUVVGQURCWU1Rc3dDUVlEVlFRR0V3SlZVekVUfHx8TUJFR0ExVUVDQXdLVTI5dFpTMVRkR0YwWlRFaE1COEdBMVVFQ2d3WVNXNTBaWEp1WlhRZ1YybGtaMmwwY3lCUXx8fGRIa2dUSFJrTVJFd0R3WURWUVFEREFoRGIyNXpkV3hEUVRBZUZ3MHhOREV4TVRFeE9EQTJOVEphRncweU5ERXh8fHxNRGd4T0RBMk5USmFNRkV4Q2pBSUJnTlZCQU1NQVNveEV6QVJCZ05WQkFnTUNsTnZiV1V0VTNSaGRHVXhDekFKfHx8QmdOVkJBWVRBbFZUTVNFd0h3WURWUVFLREJoSmJuUmxjbTVsZENCWGFXUm5hWFJ6SUZCMGVTQk1kR1F3Z1o4d3x8fERRWUpLb1pJaHZjTkFRRUJCUUFEZ1kwQU1JR0pBb0dCQU5tdEJuMXFISzQvMGFZR3JsbE1lOE1CYjd1ZDFlZjV8fHxuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcURxRnZVRmVmaFFEZHliSVYzfHx8WGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIeXRzV2FHTzBpQzJsVUpaL3x8fDZLdEd2RkFaZXFPZkFnTUJBQUdqZVRCM01Ba0dBMVVkRXdRQ01BQXdIUVlEVlIwT0JCWUVGUDBDVzN1dDZxUkx8fHxjb0hsMVNsVHZIN01wWjE3TUI4R0ExVWRJd1FZTUJhQUZDejYySytBMTYxNUxHaDFmTzBkUWdBN1orWU9NQXNHfHx8QTFVZER3UUVBd0lGb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEUVlKS29aSXx8fGh2Y05BUUVGQlFBRGdnRUJBS1JScU5NSHRVbEZKQUkvTEpFaTJzMTN1S09CSXZIZ1R1azQ4cXJGYisyeFJDaHF8fHxiWEFIK3R2b2FDVGlWc1ZMRUlCR3ZKRTgvMjVCMHQ2OFZoVkw4OW9heGpML0Q0aE5JRCtJWXFpQ0N4QlcvcVJ6fHx8UGhiU1pBZGJmR2lWWkdIMEVGZmVKbEhRTkdwN2VYajUrTVBmZ0dVM2d4U2RpRk5aY0tVYmNpdVBXY2I0WlhRTXx8fDFHa2tvZWNVY2kvZWtpN2krRXZqNG16dHdNRS9BYmVoVnVJa1VvVEpnbFpFeGdEYVl1WE4rdWZhZG4wRWZ1eVF8fHxKV3RGNXBjRjlGQ0JVSWhDTEltTzBmQ01DWDF5MzB6aEFHUHROSWZzY1hyR003OEtzL05DSnhoNkIrd1hvR3F2fHx8akJSZVBUeFV6ZnZ4RjlmdmtlcS96dEtpSVBEMzNtcko2cTZMSmRFPXx8fC0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0iLAogICAgICAgICAgICAgICAgIkNPTlNVTF9LRVkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tfHx8TUlJQ2VRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NBbU13Z2dKZkFnRUFBb0dCQU5tdEJuMXFISzQvMGFZR3x8fHJsbE1lOE1CYjd1ZDFlZjVuWVBUQVVZWTR6ayt3c09IZGppc3M0WktZZWNTQ0tZQUpkTUtEMWVScjJraE8wcUR8fHxxRnZVRmVmaFFEZHliSVYzWGZkcGxQNjNWMHlzQlJkanRiNjNBeXJPKzVUWks2Tm1tdmk2SENUTEwyZ3Fja1FIfHx8eXRzV2FHTzBpQzJsVUpaLzZLdEd2RkFaZXFPZkFnTUJBQUVDZ1lFQW1yNjBoR2Z4SjdiYTFZcWVXNEZSNGxtZHx8fEV1V3I4Wk8wZE1pR2VVeXNERUFmdVYwTm9GQzE5MXZkcWFWYVhKaHlTMHMxaU8xYXBBUXA0RmtrVU5PL0ZaN3J8fHw3VTJMMG82b3c2SDhKMnk5Y0hPbVdBOW53MEVHRGFvWFJsejBaL3BLSjhiN1dTQm5NNU00TWM2d25FLzQrZmE1fHx8RUxpTlNHUWZVWE51UTZobVBORUNRUUQ3cFdxWUJVbzRoSFRBUE9vSFlXYXVERDdFNThUSUpxckRDY1B4bWV1Q3x8fEo4VElpNkttcnYrMnBJVjJ5K3daN05pQTFWYWNQRUZyL0xkbFd4RlU1RlByQWtFQTNYRW1HZ1Bpekt3eSs4OXd8fHwyZW5rTHc3Rms3SDRzcW9zOFlKOWRjMUd0VGRyZE10eHdqVzVQcVlaaFgrZ09LL1gwb0NBRGtuVnZ2YXVSTllVfHx8VXFqbUhRSkJBTDQxeFlHTkZoSHNSTmQ5ODZPS2d2TngvQXdYNkEwbDlSTWhrWU5RUmN5R3hONlZkV2NxaGMwSHx8fFJINk1HelZwYWlqUG1QelZLdG8yRm1XOVZUZG1zdXNDUVFDeTltL3BsSHhtRjBENCt6UmtHTCsrUER6M1dWejV8fHwzOGlFd29Yc2Y2TUdiNnliYnBRWWRkeXBRZ25jTjBIZ3JsUkpIbXJmb1ZKcWkraFpYMzU3TTE4TkFrRUFteGxhfHx8N0Nxa1FmTEd1aGExWjZNbldHS0dHTlBuYkErUTM0aFk1MkFnSjVTT3k0V0VrVytleThIdE1HSHNFMXB1eG1DaHx8fEdVanZMQ1JwOGtQUTg5bDhVdz09fHx8LS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLSIKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0sCiAgICAiYXBwIjogewogICAgICAgICJpbWFnZSI6ICJodWItbWVzc2FnZS1xdWV1ZS1zZXJ2aWNlIiwKICAgICAgICAidXNlc1NpZGVraWNrIjogdHJ1ZSwKICAgICAgICAibG9jYWxseUxvYWRCYWxhbmNlZCI6IHRydWUsCiAgICAgICAgImluc3RhbmNlcyI6IDEsCiAgICAgICAgInZlcnNpb24iOiAiMC4yLjAiLAogICAgICAgICJlbmFibGVIZWFsdGhDaGVjayI6IGZhbHNlLAogICAgICAgICJzZXJ2aWNlTmFtZSI6ICJodWItbWVzc2FnZS1xdWV1ZS1zZXJ2aWNlIiwKICAgICAgICAicHJlaGVhdFNpZGVraWNrIjogewogICAgICAgICAgICAiaW1hZ2UiOiAic2lkZWtpY2stcHJlaGVhdCIsCiAgICAgICAgICAgICJ2ZXJzaW9uIjogIjAuNS4wIiwKICAgICAgICAgICAgInNlcnZpY2VzIjogWyJtb2NrLWF1dGgiLCAiaHViLXd3dy1hdXRoIiwgImh1Yi1jb25maWd1cmF0aW9uLWFwaSIsICJodWItY29uZmlndXJhdGlvbi11aSIsICJodWItcHVibGlzaC1hcGkiLCAiZG9jdW1lbnQtcGVyc2lzdGVuY2Utc2VydmljZSIsICJodWItbWVzc2FnZS1xdWV1ZS1zZXJ2aWNlIl0KICAgICAgICB9LAogICAgICAgICJlbnZpcm9ubWVudCI6IHsKICAgICAgICAgICJKV1RfU0hBUkVEX1NFQ1JFVCI6ICJpdCBzY2FsZXMgcmlnaHQgdXAiLAogICAgICAgICAgIlNJREVLSUNLX1BPUlQiOiAiMzAwMCIsCiAgICAgICAgICAiTE9HX0xFVkVMIjogInRyYWNlIiwKICAgICAgICAgICJIVUJfQ09ORklHVVJBVElPTl9BUEkiOiAiaHViLWNvbmZpZ3VyYXRpb24tYXBpIiwKICAgICAgICAgICJNQVhfTlVNX01FU1NBR0VTIjogIjEwMCIsCiAgICAgICAgICAiUE9TVEdSRVNfSE9TVCI6ICJkZXZxdWV1ZS1kYi4yMDIwYXIuY29tIiwKICAgICAgICAgICJERUZBVUxUX05VTV9NRVNTQUdFUyI6ICIyMCIsCiAgICAgICAgICAiUE9TVEdSRVNfVVNFUk5BTUUiOiAicG9zdGdyZXMiLAogICAgICAgICAgIlBPU1RHUkVTX1BBU1NXT1JEIjogInVfcGlja19pdCIsCiAgICAgICAgICAiUE9TVEdSRVNfUE9SVCI6ICI1NDMyIiwKICAgICAgICAgICJQT1NUR1JFU19EQVRBQkFTRSI6ICJxdWV1ZSIKICAgICAgICB9CiAgICB9Cn0KRU9GCmNob3duIHJvb3Q6cm9vdCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2htb2QgMDcwMCAvb3B0L2Fuc2libGUvaW5zdGFuY2VfY29uZmlnLmpzb24KY2QgL29wdC9hbnNpYmxlICYmIC4vc3RhcnR1cC5zaA=="
+       }
+    },
+    "MQSService": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "ServiceName": "mock-auth",
+          "VPC": {"Ref": "VPC"},
+          "AvailabilityZones": {"Fn::Join": [",", {"Ref": "AvailabilityZones"}]},
+          "CreateElb": "true",
+          "SSLCertName": {"Ref":"SSLCertName"},
+          "ElbSecurityGroups": {"Fn::Join": [",", [{"Ref":"ElbPublicSecurityGroup"}] ]},
+          "ElbSubnets": {"Fn::Join": [",", [{"Ref": "PublicSubnet0"}, {"Ref": "PublicSubnet1"}, {"Ref": "PublicSubnet2"}]]},
+          "AsgSubnets": {"Fn::Join": [",", [{"Ref": "PrivateSubnet0"}, {"Ref": "PrivateSubnet1"}, {"Ref": "PrivateSubnet2"}]]},
+          "AsgLaunchConfig": {"Ref": "MQSServiceLaunchConfig"},
+          "Route53ELBSubDomain": {"Fn::Join": ["", [{"Ref": "EihEnv"}, "stan--message-queue-service"]]},
+          "HostedZoneId": {"Ref": "HostedZoneId"},
+          "AsgMinSize": "1",
+          "AsgMaxSize": "3",
+          "EihEnv": {"Ref": "EihEnv"}
+        },
+        "TemplateURL": {"Fn::Join": ["", [{"Ref": "TemplatePath"}, "services.json"]]}
+      }
+    }
+
+  }
+}
