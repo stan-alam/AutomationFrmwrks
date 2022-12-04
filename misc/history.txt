@@ -1,0 +1,51 @@
+cd /var/log/
+ls
+cd nginx/
+ls
+tail -f error.log
+cd /etc/nginx/
+ls
+ls sites-enabled/
+cat sites-enabled/docker.conf
+cd
+ls
+ls /
+ls /opt/
+ls /opt/docker_images/
+ls /opt/docker_images/download/
+ls /opt/ansible/
+cat /opt/ansible/startup.sh
+cat /opt/ansible/vars.json
+ls /opt/
+ls /usr/local/
+ls /usr/local/share/
+ls /
+ls /dev/
+exit
+-
+
+24  exit
+25  ls
+26  cd /var/log/
+27  ls
+28  cd nginx/
+29  tail -f error.log
+30  ls
+31  tail -f error.log
+32  cd ..
+33  ls
+34  cd ..
+35  ls
+36  cd ..
+37  ls
+38  cd bin
+39  ls
+40  cd running-in-container
+41  cd ..
+42  ls
+43  docker ps
+44  sudo su
+45  docker
+46  docker ps
+47  exit
+ore--
