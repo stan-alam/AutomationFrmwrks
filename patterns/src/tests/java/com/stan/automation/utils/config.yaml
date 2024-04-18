@@ -1,0 +1,14 @@
+APP_URL: https://nannerl.io
+REST_URI: https://nannerl.io/api
+BROWSER: chrome
+HOSTNAME: nannerl.io
+ADMIN_USERNAME: root123
+ADMIN_PASSWORD: root123
+DEFAULT_USERNAME: root123
+DEFAULT_PASSWORD: root123
+NEW_USERNAME: newuser
+NEW_PASSWORD: newpassword
+
+WAIT_DELAY: 2000 #max delay in ms to wait for an element to appear
+
+# Path: config.yaml

@@ -1,15 +1,3 @@
-## Patterns in Test Automation, not all inclusive
-
-<a>
-  <img src="https://github.com/stan-alam/AutomationFrmwrks/blob/develop/patterns/images/01/javaPttrns01%20-%20page%201.png" width="80%" height="80%">
-</a>
-
-<a>
-  <img src="https://github.com/stan-alam/AutomationFrmwrks/blob/develop/patterns/images/01/javaPttrns01%20-%20page%202.png" width="80%" height="80%">
-</a>
-
-
-```java
 package com.stan.automation.apps.login;
 
 import com.codeborne.selenide.SelenideElement;
@@ -70,7 +58,3 @@ public class LoginPage {
         return "";
     }
 }
-```
-
-
-- [ ] also mind Antipatterns 
