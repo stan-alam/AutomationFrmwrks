@@ -1,7 +1,7 @@
 vars = {
   "global": {
       "stan-api-endpoints": "api/stan-api-endpoints",
-      "summaries": "/summaries"
+      "transactions": "/transactions"
   },
   "headers": {
       "stan-api-endpoints": {'Accept':'application/json; charset=utf-8'}
