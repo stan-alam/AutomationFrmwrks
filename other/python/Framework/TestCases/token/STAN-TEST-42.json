@@ -1,0 +1,32 @@
+{
+    "id" : "StanTest-42",
+    "name" : "Token Service",
+    "testCases" : [
+      {
+        "testCaseId": 1,
+        "name" : "Get Access Token",
+        "steps": [
+          {
+            "id": 1,
+            "type": "token-service",
+            "params": {
+              "action": "getAccessToken",
+              "sharedData": {
+                "key": "apikey",
+                "sharelocation": {
+                  "step": "preSetup",
+                  "value": "stan.apiKey"
+                }
+              }
+            },
+            "tests": [
+              {
+                "action": "include",
+                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+}

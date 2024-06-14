@@ -1,0 +1,27 @@
+{
+  "global": [{
+      "token_service": "/token",
+      "admin_ui": "/#/login",
+      "generic_header": "application/x-www-form-urlencoded"
+  }],
+  "api":[{
+    "stan-api-endpoint_detail": "/api/stan",
+    "access_token": "/api/stan_accesstoken"
+  }],
+  "endpoints":
+  [{
+    "summaries": "/summaries"
+  }],
+  "headers": [{
+      "token_service": "{'Accept':'application/json; charset=utf-8'}",
+      "stan-api-endpoint_detail": "application/x-www-form-urlencoded"
+  }],
+  "url": "https://127.0.0.1",
+  "credentials": {
+      "username": "admin@stantest.com",
+      "password": "password"
+  },
+  "browsers": [
+      "chromedriver"
+  ]
+}

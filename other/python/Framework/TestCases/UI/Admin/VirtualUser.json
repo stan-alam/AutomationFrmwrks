@@ -1,0 +1,26 @@
+{
+    "StanHost": "127.0.0.1",
+	"StanHostUsername": "Stan",
+	"StanHostPassword": "StanSimulator!42",
+	"StanApiUsername": "admin@stantest.com",
+	"StanApiPassword": "11606f099bac4c64a3d7710505141e14",
+	"StanAdminUsername": "admin@stantest.com",
+	"StanAdminPassword": "StanSimulator!42",
+	"StanSimulatorHost": "127.0.0.1" ,
+	"StanUserUsername": "user@stantest.com",
+	"StanUserPassword": "user",
+	"StanUserId": 0,
+	"Browsers": 1,
+	"JobsPerHour": 0,
+	"Hours": 0,
+	"Certified": true,
+	"StanTestTargetVersion": "3",
+	"Duration": 8,
+	"TimeBetweenPressOK": 10000,
+	"TimeBetweenClickYes": 15000,
+	"RandomTime": false,
+  	"BttnMin": 10000,
+  	"BttnkMax": 180000
+}
+
+	

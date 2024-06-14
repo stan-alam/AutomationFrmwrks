@@ -3,6 +3,29 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# ignore all files in __pycache__  /c/git/AutomationFrmwrks/other/python/Framework/lib/__pycache__ recursively
+lib/
+__pycache__/*
+# ignore files in the scripts directory
+scripts/*
+# ignore all files in the bin directory
+bin/*
+# ignore all files in the obj directory
+obj/*
+# ignore site-packages directory recursively
+
+site-packages/*
+
+# ignore all files in the dist directory
+dist/*
+
+# ignore all files in the build directory
+build/*
+
+# ignore tcl8.6 directory
+tcl8.6/*
+
+
 # User-specific files
 *.rsuser
 *.suo
@@ -348,3 +371,8 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# ignore python virtual env
+venv/
+
+# ignore python scripts
